@@ -43,7 +43,9 @@ Distribution *dist_uniform(double min, double max);
 /* ── Operaciones ────────────────────────────────────── */
 
 double        dist_sample(const Distribution *d);        /* muestreo aleatorio */
-double        dist_map_value(const Distribution *d);     /* valor más probable */
+double        dist_map_value(const Distribution *d);     /* valor más probable (Normal, Uniform) */
+size_t        dist_map_index(const Distribution *d);     /* índice más probable (Discrete) */
+const char*   dist_map_label(const Distribution *d);     /* etiqueta más probable (Discrete), NULL si no hay */
 int           dist_first_index(const Distribution *d);   /* primer índice válido */
 
 /* ── Complemento: NOT sobre distribución ────────────── */

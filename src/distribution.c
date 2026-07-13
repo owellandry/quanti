@@ -118,14 +118,8 @@ double dist_map_value(const Distribution *d) {
     case DIST_NORMAL:
         return d->params.normal.mean;   /* la moda de una normal es la media */
 
-    case DIST_DISCRETE: {
-        size_t best = 0;
-        for (size_t i = 1; i < d->params.discrete.n; i++) {
-            if (d->params.discrete.probs[i] > d->params.discrete.probs[best])
-                best = i;
-        }
-        return (double)best;
-    }
+    case DIST_DISCRETE:
+        return 0.0;  /* usar dist_map_index / dist_map_label */
 
     case DIST_UNIFORM:
         /* Uniforme no tiene moda, devolvemos el punto medio */
@@ -133,6 +127,25 @@ double dist_map_value(const Distribution *d) {
     }
 
     return 0.0;
+}
+
+size_t dist_map_index(const Distribution *d) {
+    if (!d || d->type != DIST_DISCRETE) return 0;
+
+    size_t best = 0;
+    for (size_t i = 1; i < d->params.discrete.n; i++) {
+        if (d->params.discrete.probs[i] > d->params.discrete.probs[best])
+            best = i;
+    }
+    return best;
+}
+
+const char *dist_map_label(const Distribution *d) {
+    if (!d || d->type != DIST_DISCRETE) return NULL;
+    size_t idx = dist_map_index(d);
+    if (d->params.discrete.labels && idx < d->params.discrete.n)
+        return d->params.discrete.labels[idx];
+    return NULL;
 }
 
 /* ── First index ────────────────────────────────────── */

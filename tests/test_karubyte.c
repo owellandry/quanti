@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <assert.h>
 #include <math.h>
+#include <string.h>
 #include "../include/karubyte.h"
 #include "../include/distribution.h"
 
@@ -241,9 +242,21 @@ void test_distributions(void) {
     dist_free(u);
     PASS(); tests_run++; tests_passed++;
 
-    TEST("dist_map_value discrete → índice mayor prob");
+    TEST("dist_map_index discrete → índice mayor prob");
     d = dist_discrete((double[]){0.1, 0.7, 0.2}, NULL, 3);
-    assert((int)dist_map_value(d) == 1);
+    assert(dist_map_index(d) == 1);
+    dist_free(d);
+    PASS(); tests_run++; tests_passed++;
+
+    TEST("dist_map_label discrete con etiquetas");
+    d = dist_discrete((double[]){0.1, 0.7, 0.2}, (const char *[]){"a","b","c"}, 3);
+    assert(strcmp(dist_map_label(d), "b") == 0);
+    dist_free(d);
+    PASS(); tests_run++; tests_passed++;
+
+    TEST("dist_map_label discrete sin etiquetas → NULL");
+    d = dist_discrete((double[]){0.5, 0.5}, NULL, 2);
+    assert(dist_map_label(d) == NULL);
     dist_free(d);
     PASS(); tests_run++; tests_passed++;
 

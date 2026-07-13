@@ -272,6 +272,15 @@ static Value eval_expr(Interpreter *interp, Scope *scope, ASTNode *node) {
         default:             mode = COLLAPSE_MAP;    break;
         }
 
+        /* MAP sobre discreta con etiquetas → devolver la etiqueta */
+        if (mode == COLLAPSE_MAP && expr.as.karu_val.state == KARU_PROB && expr.as.karu_val.dist) {
+            const char *label = dist_map_label(expr.as.karu_val.dist);
+            if (label) {
+                karu_free(&expr.as.karu_val);
+                return val_string(label);
+            }
+        }
+
         KaruByte collapsed = quanti_measure(interp->rt, expr.as.karu_val, mode);
         /* Return as int: TRUE=1, FALSE=0 */
         int result = (collapsed.state == KARU_TRUE) ? 1 : 0;

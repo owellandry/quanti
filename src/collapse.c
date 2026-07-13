@@ -32,13 +32,15 @@ KaruByte collapse_single(KaruByte k, CollapseMode mode) {
 
         switch (mode) {
         case COLLAPSE_MAP: {
-            double val = dist_map_value(k.dist);
-            /* Para discretas: index 0 → FALSE, index > 0 → TRUE
-             * Para continuas: valor > 0.5 → TRUE */
-            if (k.dist->type == DIST_DISCRETE)
-                return (val > 0.0) ? karu_true() : karu_false();
-            else
+            if (k.dist->type == DIST_DISCRETE) {
+                size_t idx = dist_map_index(k.dist);
+                /* index 0 → FALSE, index > 0 → TRUE */
+                return (idx > 0) ? karu_true() : karu_false();
+            } else {
+                double val = dist_map_value(k.dist);
+                /* Para continuas: valor > 0.5 → TRUE */
                 return (val > 0.5) ? karu_true() : karu_false();
+            }
         }
         case COLLAPSE_SAMPLE: {
             double val = dist_sample(k.dist);
