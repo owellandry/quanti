@@ -1,0 +1,49 @@
+// Quanti — Programa de demostracion
+// Spec completa ejecutandose en el runtime real
+
+// === Tipos clasicos ===
+int respuesta = 42;
+string nombre = "Quanti";
+print(nombre);
+print(respuesta);
+
+// === KaruByte: superposicion ===
+karu x = superposition(0, 1);
+print(x);
+
+// === Algebra: AND, OR, NOT ===
+karu y = x AND 1;
+karu z = NOT x;
+print(y);
+print(z);
+
+// === Colapso: measure:map (determinista) ===
+print(measure:map(y));
+
+// === Colapso: measure:first (primera rama) ===
+print(measure:first(y));
+
+// === Distribucion probabilistica ===
+karu decision = P(Discrete([0.7, 0.3], ["comprar", "esperar"]));
+print(decision);
+print(measure:map(decision));
+
+// === Control de flujo ===
+int n = 10;
+if (n > 5) {
+    print(n);
+}
+
+// === Funciones ===
+fn doble(int x) -> int {
+    return x * 2;
+}
+print(doble(21));
+
+// === While loop ===
+int i = 3;
+while (i > 0) {
+    print(i);
+    i = i - 1;
+}
+

@@ -1,0 +1,31 @@
+# Build
+build/
+*.o
+*.obj
+*.exe
+*.dll
+*.lib
+*.a
+*.so
+*.dylib
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Editor config
+quanti_ide.ini
+
+quanti-ide/
+editor/
+.kombai
