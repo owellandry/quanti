@@ -276,8 +276,9 @@ static Value eval_expr(Interpreter *interp, Scope *scope, ASTNode *node) {
         if (mode == COLLAPSE_MAP && expr.as.karu_val.state == KARU_PROB && expr.as.karu_val.dist) {
             const char *label = dist_map_label(expr.as.karu_val.dist);
             if (label) {
+                Value result = val_string(label);  /* strdup ANTES de karu_free */
                 karu_free(&expr.as.karu_val);
-                return val_string(label);
+                return result;
             }
         }
 
