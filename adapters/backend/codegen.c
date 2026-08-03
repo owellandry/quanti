@@ -350,7 +350,7 @@ int codegen_build(const char *qa_path, const char *out_exe, bool use_lto) {
                  lto_flag, gen_path, out_exe);
     } else {
         snprintf(cmd, sizeof(cmd),
-                 "gcc -Wall -Wextra -std=c11 -O2 %s-I include \"%s\" build/libquanti.a -lm -o \"%s\"",
+                 "gcc -Wall -Wextra -std=c11 -O2 %s-I domain -I application \"%s\" build/libquanti.a -lm -o \"%s\"",
                  lto_flag, gen_path, out_exe);
     }
 

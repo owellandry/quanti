@@ -2,8 +2,8 @@
 #include <assert.h>
 #include <math.h>
 #include <string.h>
-#include "../include/stochastic.h"
-#include "../include/distribution.h"
+#include "stochastic.h"
+#include "distribution.h"
 
 #define TEST(name) printf("  [TEST] %-50s", name)
 #define PASS()     printf("OK\n")

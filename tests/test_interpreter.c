@@ -2,7 +2,7 @@
 #include <stdlib.h>
 #include <assert.h>
 #include <string.h>
-#include "../include/interpreter.h"
+#include "interpreter.h"
 
 #define TEST(name) printf("  [TEST] %-55s", name)
 #define PASS()     printf("OK\n")

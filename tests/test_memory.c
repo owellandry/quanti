@@ -1,9 +1,9 @@
 #include <stdio.h>
 #include <assert.h>
 #include <stdlib.h>
-#include "../include/karubyte.h"
-#include "../include/distribution.h"
-#include "../include/memory.h"
+#include "karubyte.h"
+#include "distribution.h"
+#include "memory.h"
 
 #define TEST(name) printf("  [TEST] %-50s", name)
 #define PASS()     printf("OK\n")

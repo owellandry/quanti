@@ -2,12 +2,12 @@
 #include <stdlib.h>
 #include <assert.h>
 #include <string.h>
-#include "../include/parser.h"
-#include "../include/typecheck.h"
-#include "../include/ir.h"
-#include "../include/vm.h"
-#include "../include/specialize.h"
-#include "../include/runtime.h"
+#include "parser.h"
+#include "typecheck.h"
+#include "ir.h"
+#include "vm.h"
+#include "specialize.h"
+#include "runtime.h"
 
 #define TEST(name) printf("  [TEST] %-55s", name)
 #define PASS()     printf("OK\n")

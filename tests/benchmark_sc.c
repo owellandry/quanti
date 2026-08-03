@@ -2,8 +2,8 @@
 #include <stdlib.h>
 #include <time.h>
 #include <math.h>
-#include "../include/runtime.h"
-#include "../include/stochastic.h"
+#include "runtime.h"
+#include "stochastic.h"
 
 #define N_OPS 10000
 #define STREAM_LEN 1024

@@ -6,12 +6,12 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
-#include "../include/interpreter.h"
-#include "../include/parser.h"
-#include "../include/typecheck.h"
-#include "../include/ir.h"
-#include "../include/vm.h"
-#include "../include/specialize.h"
+#include "interpreter.h"
+#include "parser.h"
+#include "typecheck.h"
+#include "ir.h"
+#include "vm.h"
+#include "specialize.h"
 
 static double now_sec(void) {
     return (double)clock() / (double)CLOCKS_PER_SEC;

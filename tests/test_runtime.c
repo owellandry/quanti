@@ -2,7 +2,7 @@
 #include <assert.h>
 #include <stdlib.h>
 #include <math.h>
-#include "../include/runtime.h"
+#include "runtime.h"
 
 #define TEST(name) printf("  [TEST] %-55s", name)
 #define PASS()     printf("OK\n")

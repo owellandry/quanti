@@ -46,14 +46,8 @@ La hipótesis central: *un runtime multiestado puede mejorar la precisión de mo
 ## Quick Start
 
 ```bash
-# Compilar todo
-make
-
-# O manualmente en cualquier plataforma
-gcc -Wall -Wextra -std=c11 -I include -o build/quanti.exe \
-    src/main.c src/ast.c src/karubyte.c src/distribution.c \
-    src/memory.c src/collapse.c src/branch.c src/pruner.c \
-    src/runtime.c src/lexer.c src/parser.c src/interpreter.c -lm
+# Compilar todo (MSYS2/MinGW: mingw32-make)
+mingw32-make
 
 # Ejecutar un programa .qa
 ./build/quanti examples/demo.qa
@@ -279,39 +273,39 @@ print(doble(21));  // → 42
 
 ## Arquitectura de la Biblioteca C
 
-La biblioteca está organizada en capas, cada una con una responsabilidad bien definida:
+Hexagonal micromodular: el dominio multiestado está aislado; los adaptadores (CLI, frontend QA, VM/codegen) dependen de application ports, nunca al revés.
 
 ```
 ┌─────────────────────────────────────────────────┐
-│                  main / CLI                      │
-│              src/main.c + interpreter            │
+│              adapters/cli (main)                 │
+├──────────────────┬──────────────────────────────┤
+│ adapters/frontend│     adapters/backend         │
+│ lexer parser AST │     VM · AOT codegen         │
+│ interpreter      │                              │
+├──────────────────┴──────────────────────────────┤
+│              application (ports)                 │
+│     runtime · IR · typecheck · specialize        │
 ├─────────────────────────────────────────────────┤
-│               QuantiRuntime                     │
-│          src/runtime.c — orquestador             │
-├──────────┬──────────┬──────────┬────────────────┤
-│ Collapse │  Branch  │  Pruner  │   KaruMemory   │
-│ Engine   │ Manager  │ Adaptivo │   (DAG + deps) │
-├──────────┴──────────┴──────────┴────────────────┤
-│          KaruByte + Distribution                │
-│      src/karubyte.c + src/distribution.c        │
+│                   domain                         │
+│ KaruByte · Dist · SC · Memory · Collapse · Branch│
 └─────────────────────────────────────────────────┘
 ```
 
 ### Módulos
 
-| Módulo | Archivos | Responsabilidad |
-|--------|----------|-----------------|
-| **KaruByte** | `karubyte.c/h` | Los 5 estados, álgebra AND/OR/NOT, clonación, IDs |
-| **Distribution** | `distribution.c/h` | Normal, Discrete (con labels), Uniform; sample, MAP, intersección, unión |
-| **KaruMemory** | `memory.c/h` | DAG de dependencias: registro, dependencias, cascada transitiva |
-| **Collapse** | `collapse.c/h` | Estrategias MAP/SAMPLE/FIRST + propagación por el DAG |
-| **Branch** | `branch.c/h` | Fork semántico, merge, variables locales por rama |
-| **Pruner** | `pruner.c/h` | Poda adaptativa por umbral, renormalización de pesos |
-| **Runtime** | `runtime.c/h` | Orquestador que une todos los módulos en una API de alto nivel |
-| **Lexer** | `lexer.c/h` | Tokenización del lenguaje QA |
-| **Parser** | `parser.c/h` | Recursive descent → AST |
-| **AST** | `ast.c/h` | Definición de nodos del árbol sintáctico |
-| **Interpreter** | `interpreter.c/h` | Tree-walking interpreter, scopes, funciones |
+| Capa | Módulo | Responsabilidad |
+|------|--------|-----------------|
+| **domain** | `karubyte` | 5 estados, álgebra AND/OR/NOT |
+| **domain** | `distribution` | Normal, Discrete, Uniform |
+| **domain** | `stochastic` | Bitstream SC backend |
+| **domain** | `memory` | DAG de dependencias |
+| **domain** | `collapse` | MAP/SAMPLE/FIRST + propagación |
+| **domain** | `branch` / `pruner` | Fork, merge, poda |
+| **application** | `runtime` | Orquestador / port principal |
+| **application** | `ir` / `typecheck` / `specialize` | Pipeline de compilación |
+| **adapters/frontend** | lexer→interpreter | Entrada QA |
+| **adapters/backend** | `vm` / `codegen` | Ejecución IR y binario nativo |
+| **adapters/cli** | `main` | CLI `run` / `vm` / `build` / `ir` |
 
 ### DAG de dependencias
 
@@ -543,17 +537,22 @@ El archivo `test_labels_e2e.qa` cubre:
 
 ```
 quanti/
-├── README.md
-├── quanti.qa.md              ← especificación
-├── Makefile                  ← build (quanti, libquanti, tests, LTO)
-│
-├── include/                  ← headers (runtime + IR/VM/codegen)
-├── src/                      ← C11: runtime, intérprete, IR, VM, AOT
-├── tests/                    ← suites unitarias + benchmarks
-├── examples/                 ← demo.qa, branching.qa, classical.qa
+├── domain/                   ← hexagon core (KaruByte, dist, SC, DAG, collapse, branch, pruner)
+├── application/              ← ports / use-cases (runtime, IR, typecheck, specialize)
+├── adapters/
+│   ├── cli/                  ← driving: quanti CLI
+│   ├── frontend/             ← driving: lexer, parser, AST, interpreter
+│   └── backend/              ← driven: VM, AOT codegen
+├── tests/
+├── examples/
 ├── build/                    ← binaries + libquanti.a + *_gen.c
-└── docs/
+├── docs/
+├── Makefile
+├── README.md
+└── quanti.qa.md
 ```
+
+Dependency rule: `adapters → application → domain`. Domain never depends on adapters.
 
 ---
 

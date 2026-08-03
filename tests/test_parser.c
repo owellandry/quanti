@@ -2,9 +2,9 @@
 #include <stdlib.h>
 #include <assert.h>
 #include <string.h>
-#include "../include/lexer.h"
-#include "../include/ast.h"
-#include "../include/parser.h"
+#include "lexer.h"
+#include "ast.h"
+#include "parser.h"
 
 #define TEST(name) printf("  [TEST] %-55s", name)
 #define PASS()     printf("OK\n")
