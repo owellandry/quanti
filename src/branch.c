@@ -69,6 +69,20 @@ void branch_free(BranchManager *mgr) {
     free(mgr);
 }
 
+void branch_clear(BranchManager *mgr) {
+    if (!mgr) return;
+    for (size_t i = 0; i < mgr->count; i++) {
+        Branch *b = &mgr->branches[i];
+        for (size_t j = 0; j < b->local_count; j++)
+            karu_free(&b->locals[j].value);
+        free(b->locals);
+        b->locals = NULL;
+        b->local_count = 0;
+        b->local_cap = 0;
+    }
+    mgr->count = 0;
+}
+
 /* ── Fork ───────────────────────────────────────────── */
 
 size_t branch_fork(BranchManager *mgr, KaruByte source) {

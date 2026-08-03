@@ -9,13 +9,13 @@ print(respuesta);
 
 // === KaruByte: superposicion ===
 karu x = superposition(0, 1);
-print(x);
+print(x);  // I/O collapse → measure:map → 1
 
 // === Algebra: AND, OR, NOT ===
 karu y = x AND 1;
 karu z = NOT x;
-print(y);
-print(z);
+print(y);  // collapse → 1
+print(z);  // collapse → 1
 
 // === Colapso: measure:map (determinista) ===
 print(measure:map(y));

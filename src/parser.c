@@ -404,6 +404,63 @@ static ASTNode *parse_if(Parser *p) {
     return node;
 }
 
+static ASTNode *parse_when(Parser *p) {
+    int line = p->previous.line;
+    parser_expect(p, TOK_LPAREN, "Expected '(' after 'when'");
+    ASTNode *cond = parse_expression(p);
+    parser_expect(p, TOK_RPAREN, "Expected ')' after when condition");
+    ASTNode *body = parse_block(p);
+
+    ASTNode *node = ast_alloc(NODE_WHEN, line);
+    node->as.when_stmt.when_cond = cond;
+    node->as.when_stmt.when_body = body;
+    return node;
+}
+
+static ASTNode *parse_runtime_cfg(Parser *p) {
+    int line = p->previous.line;
+    parser_expect(p, TOK_LPAREN, "Expected '(' after '@runtime'");
+
+    ASTNode *node = ast_alloc(NODE_RUNTIME_CFG, line);
+    node->as.runtime_cfg.max_branches = 0;
+    node->as.runtime_cfg.prune_threshold = -1.0;
+    node->as.runtime_cfg.has_max_branches = false;
+    node->as.runtime_cfg.has_prune_threshold = false;
+
+    if (!check(p, TOK_RPAREN)) {
+        do {
+            parser_expect(p, TOK_IDENT, "Expected config key");
+            char *key = prev_string(p);
+            parser_expect(p, TOK_COLON, "Expected ':' after config key");
+
+            if (strcmp(key, "max_branches") == 0) {
+                parser_expect(p, TOK_INT_LIT, "Expected integer for max_branches");
+                char *s = prev_string(p);
+                node->as.runtime_cfg.max_branches = (size_t)atoi(s);
+                node->as.runtime_cfg.has_max_branches = true;
+                free(s);
+            } else if (strcmp(key, "prune_threshold") == 0) {
+                if (parser_match(p, TOK_FLOAT_LIT) || parser_match(p, TOK_INT_LIT)) {
+                    char *s = prev_string(p);
+                    node->as.runtime_cfg.prune_threshold = atof(s);
+                    node->as.runtime_cfg.has_prune_threshold = true;
+                    free(s);
+                } else {
+                    parser_error(p, "Expected number for prune_threshold");
+                }
+            } else {
+                parser_error(p, "Unknown @runtime key");
+            }
+            free(key);
+        } while (parser_match(p, TOK_COMMA));
+    }
+
+    parser_expect(p, TOK_RPAREN, "Expected ')' after @runtime config");
+    /* Optional semicolon */
+    parser_match(p, TOK_SEMICOLON);
+    return node;
+}
+
 static ASTNode *parse_while(Parser *p) {
     int line = p->previous.line;
     parser_expect(p, TOK_LPAREN, "Expected '(' after 'while'");
@@ -502,6 +559,8 @@ static ASTNode *parse_statement(Parser *p) {
 
     if (parser_match(p, TOK_PRINT))  return parse_print(p);
     if (parser_match(p, TOK_IF))     return parse_if(p);
+    if (parser_match(p, TOK_WHEN))   return parse_when(p);
+    if (parser_match(p, TOK_RUNTIME_CFG)) return parse_runtime_cfg(p);
     if (parser_match(p, TOK_WHILE))  return parse_while(p);
     if (parser_match(p, TOK_FN))     return parse_fn_decl(p);
     if (parser_match(p, TOK_RETURN)) return parse_return(p);

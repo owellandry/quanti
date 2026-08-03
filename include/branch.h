@@ -51,6 +51,9 @@ typedef struct {
 BranchManager *branch_create(size_t max_branches, double prune_threshold);
 void           branch_free(BranchManager *mgr);
 
+/* Clear all branches (keeps capacity / config) */
+void branch_clear(BranchManager *mgr);
+
 /* ── Fork ───────────────────────────────────────────── */
 
 /* Crea N ramas a partir de un KaruByte en superposición.

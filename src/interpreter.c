@@ -411,6 +411,241 @@ static void print_value(Value v) {
     }
 }
 
+static bool karu_is_multistate(KaruByte k) {
+    return k.state == KARU_SUPER || k.state == KARU_PROB || k.state == KARU_UNDEF;
+}
+
+/* Force collapse for I/O (measure:map). Labels preferred when present. */
+static Value collapse_for_io(Interpreter *interp, Value v) {
+    if (v.type != VAL_KARU) return v;
+    if (!karu_is_multistate(v.as.karu_val) && v.as.karu_val.state != KARU_TRUE
+        && v.as.karu_val.state != KARU_FALSE) {
+        return v;
+    }
+
+    if (v.as.karu_val.state == KARU_TRUE) {
+        karu_free(&v.as.karu_val);
+        return val_int(1);
+    }
+    if (v.as.karu_val.state == KARU_FALSE) {
+        karu_free(&v.as.karu_val);
+        return val_int(0);
+    }
+
+    if (v.as.karu_val.state == KARU_PROB && v.as.karu_val.dist) {
+        const char *label = dist_map_label(v.as.karu_val.dist);
+        if (label) {
+            Value result = val_string(label);
+            karu_free(&v.as.karu_val);
+            return result;
+        }
+    }
+
+    KaruByte collapsed = quanti_measure(interp->rt, v.as.karu_val, COLLAPSE_MAP);
+    int result = (collapsed.state == KARU_TRUE) ? 1 : 0;
+    karu_free(&collapsed);
+    return val_int(result);
+}
+
+/* Deep-clone a scope's bindings (shallow parent link to same parent). */
+static Scope *scope_clone_shallow(Scope *src) {
+    Scope *s = scope_create(src->parent);
+    for (size_t i = 0; i < src->count; i++) {
+        Value v = src->bindings[i].value;
+        if (v.type == VAL_STRING) v = val_string(v.as.str_val);
+        else if (v.type == VAL_KARU) v = val_karu(karu_clone(v.as.karu_val));
+        scope_set(s, src->bindings[i].name, v);
+    }
+    return s;
+}
+
+/* Merge integer/bool assignments from forked scopes into parent.
+ * Divergent ints → MAP (highest-weight world wins) for classical slots.
+ * Divergent karus → superposition. */
+static void merge_forked_scopes(Interpreter *interp, Scope *parent,
+                                Scope **worlds, double *weights, size_t n_worlds,
+                                const char **tracked, size_t n_tracked) {
+    (void)interp;
+    for (size_t t = 0; t < n_tracked; t++) {
+        const char *name = tracked[t];
+        double best_w = -1.0;
+        Value best = {VAL_VOID, {.int_val = 0}};
+        bool have = false;
+        bool all_same = true;
+        Value first = {VAL_VOID, {.int_val = 0}};
+
+        for (size_t w = 0; w < n_worlds; w++) {
+            Value *v = scope_get(worlds[w], name);
+            if (!v) continue;
+
+            if (!have) {
+                first = *v;
+                if (first.type == VAL_STRING)
+                    first = val_string(v->as.str_val);
+                else if (first.type == VAL_KARU)
+                    first = val_karu(karu_clone(v->as.karu_val));
+                have = true;
+                best = first;
+                best_w = weights[w];
+            } else {
+                bool same = false;
+                if (first.type == VAL_INT && v->type == VAL_INT)
+                    same = first.as.int_val == v->as.int_val;
+                else if (first.type == VAL_BOOL && v->type == VAL_BOOL)
+                    same = first.as.bool_val == v->as.bool_val;
+                if (!same) all_same = false;
+
+                if (weights[w] >= best_w) {
+                    if (best.type == VAL_STRING) free(best.as.str_val);
+                    else if (best.type == VAL_KARU) karu_free(&best.as.karu_val);
+                    best_w = weights[w];
+                    if (v->type == VAL_STRING) best = val_string(v->as.str_val);
+                    else if (v->type == VAL_KARU) best = val_karu(karu_clone(v->as.karu_val));
+                    else best = *v;
+                }
+            }
+        }
+
+        if (!have) continue;
+
+        if (all_same) {
+            if (first.type == VAL_STRING)
+                scope_update(parent, name, val_string(first.as.str_val));
+            else if (first.type == VAL_KARU)
+                scope_update(parent, name, val_karu(karu_clone(first.as.karu_val)));
+            else
+                scope_update(parent, name, first);
+            if (first.type == VAL_STRING) free(first.as.str_val);
+            else if (first.type == VAL_KARU) karu_free(&first.as.karu_val);
+            if (best.type == VAL_STRING && best.as.str_val != first.as.str_val)
+                free(best.as.str_val);
+            else if (best.type == VAL_KARU)
+                karu_free(&best.as.karu_val);
+        } else {
+            /* MAP merge: keep highest-weight world's value */
+            if (best.type == VAL_STRING)
+                scope_update(parent, name, best);
+            else if (best.type == VAL_KARU)
+                scope_update(parent, name, best);
+            else
+                scope_update(parent, name, best);
+            if (first.type == VAL_STRING) free(first.as.str_val);
+            else if (first.type == VAL_KARU) karu_free(&first.as.karu_val);
+        }
+    }
+}
+
+static void exec_block_stmts(Interpreter *interp, Scope *scope, ASTNode *block) {
+    if (!block || block->type != NODE_BLOCK) return;
+    for (size_t i = 0; i < block->as.block.block_count; i++) {
+        exec_stmt(interp, scope, block->as.block.block_stmts[i]);
+        if (interp->returning || interp->had_error) break;
+    }
+}
+
+static void exec_multistate_if(Interpreter *interp, Scope *scope, ASTNode *node, Value cond) {
+    branch_clear(interp->rt->branches);
+    size_t created = quanti_fork(interp->rt, cond.as.karu_val);
+    if (created == 0) {
+        /* Fallback: collapse then classical if */
+        Value collapsed = collapse_for_io(interp, cond);
+        bool truthy = val_truthy(collapsed);
+        if (collapsed.type == VAL_STRING) free(collapsed.as.str_val);
+        ASTNode *block = truthy ? node->as.if_stmt.if_then : node->as.if_stmt.if_else;
+        if (block) {
+            Scope *inner = scope_create(scope);
+            exec_block_stmts(interp, inner, block);
+            scope_free(inner);
+        }
+        return;
+    }
+
+    quanti_prune(interp->rt);
+
+    /* Collect active branches */
+    size_t n = 0;
+    for (size_t i = 0; i < interp->rt->branches->count; i++)
+        if (interp->rt->branches->branches[i].active) n++;
+
+    Scope **worlds = calloc(n, sizeof(Scope *));
+    double *weights = calloc(n, sizeof(double));
+    size_t wi = 0;
+
+    const char *tracked_buf[64];
+    size_t n_tracked = 0;
+
+    for (size_t i = 0; i < interp->rt->branches->count; i++) {
+        Branch *b = &interp->rt->branches->branches[i];
+        if (!b->active) continue;
+
+        KaruByte *local = branch_get_local(interp->rt->branches, b->id, cond.as.karu_val.id);
+        bool take_then = local && local->state == KARU_TRUE;
+        ASTNode *block = take_then ? node->as.if_stmt.if_then : node->as.if_stmt.if_else;
+        if (!block) {
+            worlds[wi] = scope_clone_shallow(scope);
+            weights[wi] = b->weight;
+            wi++;
+            continue;
+        }
+
+        Scope *world = scope_clone_shallow(scope);
+        /* Bind condition name if it was an ident — skip; use local override via karu in scope if present */
+        exec_block_stmts(interp, world, block);
+
+        /* Track names assigned in this world that exist in parent */
+        for (size_t j = 0; j < world->count; j++) {
+            const char *nm = world->bindings[j].name;
+            if (scope_get(scope, nm)) {
+                bool already = false;
+                for (size_t k = 0; k < n_tracked; k++)
+                    if (strcmp(tracked_buf[k], nm) == 0) { already = true; break; }
+                if (!already && n_tracked < 64)
+                    tracked_buf[n_tracked++] = nm;
+            }
+        }
+
+        worlds[wi] = world;
+        weights[wi] = b->weight;
+        wi++;
+    }
+
+    merge_forked_scopes(interp, scope, worlds, weights, wi, tracked_buf, n_tracked);
+
+    for (size_t i = 0; i < wi; i++) scope_free(worlds[i]);
+    free(worlds);
+    free(weights);
+    karu_free(&cond.as.karu_val);
+}
+
+static void exec_multistate_when(Interpreter *interp, Scope *scope, ASTNode *node, Value cond) {
+    branch_clear(interp->rt->branches);
+    size_t created = quanti_fork(interp->rt, cond.as.karu_val);
+    if (created == 0) {
+        Value collapsed = collapse_for_io(interp, cond);
+        if (val_truthy(collapsed)) {
+            Scope *inner = scope_create(scope);
+            exec_block_stmts(interp, inner, node->as.when_stmt.when_body);
+            scope_free(inner);
+        }
+        if (collapsed.type == VAL_STRING) free(collapsed.as.str_val);
+        return;
+    }
+
+    quanti_prune(interp->rt);
+
+    for (size_t i = 0; i < interp->rt->branches->count; i++) {
+        Branch *b = &interp->rt->branches->branches[i];
+        if (!b->active) continue;
+        KaruByte *local = branch_get_local(interp->rt->branches, b->id, cond.as.karu_val.id);
+        if (local && local->state == KARU_TRUE) {
+            Scope *inner = scope_create(scope);
+            exec_block_stmts(interp, inner, node->as.when_stmt.when_body);
+            scope_free(inner);
+        }
+    }
+    karu_free(&cond.as.karu_val);
+}
+
 /* ── Statement execution ────────────────────────────── */
 
 static void exec_stmt(Interpreter *interp, Scope *scope, ASTNode *node) {
@@ -439,29 +674,63 @@ static void exec_stmt(Interpreter *interp, Scope *scope, ASTNode *node) {
 
     case NODE_PRINT: {
         Value v = eval_expr(interp, scope, node->as.print.print_expr);
-        print_value(v);
-        if (v.type == VAL_STRING) free(v.as.str_val);
+        /* I/O forces collapse (measure:map) for multi-state karu */
+        if (v.type == VAL_KARU && karu_is_multistate(v.as.karu_val)) {
+            Value collapsed = collapse_for_io(interp, v);
+            print_value(collapsed);
+            if (collapsed.type == VAL_STRING) free(collapsed.as.str_val);
+        } else {
+            print_value(v);
+            if (v.type == VAL_STRING) free(v.as.str_val);
+            else if (v.type == VAL_KARU) karu_free(&v.as.karu_val);
+        }
         break;
     }
 
     case NODE_IF: {
         Value cond = eval_expr(interp, scope, node->as.if_stmt.if_cond);
-        if (val_truthy(cond)) {
-            ASTNode *block = node->as.if_stmt.if_then;
-            Scope *inner = scope_create(scope);
-            for (size_t i = 0; i < block->as.block.block_count; i++) {
-                exec_stmt(interp, inner, block->as.block.block_stmts[i]);
-                if (interp->returning || interp->had_error) break;
+        if (cond.type == VAL_KARU && karu_is_multistate(cond.as.karu_val)) {
+            exec_multistate_if(interp, scope, node, cond);
+        } else {
+            if (val_truthy(cond)) {
+                Scope *inner = scope_create(scope);
+                exec_block_stmts(interp, inner, node->as.if_stmt.if_then);
+                scope_free(inner);
+            } else if (node->as.if_stmt.if_else) {
+                Scope *inner = scope_create(scope);
+                exec_block_stmts(interp, inner, node->as.if_stmt.if_else);
+                scope_free(inner);
             }
-            scope_free(inner);
-        } else if (node->as.if_stmt.if_else) {
-            ASTNode *block = node->as.if_stmt.if_else;
-            Scope *inner = scope_create(scope);
-            for (size_t i = 0; i < block->as.block.block_count; i++) {
-                exec_stmt(interp, inner, block->as.block.block_stmts[i]);
-                if (interp->returning || interp->had_error) break;
+            if (cond.type == VAL_STRING) free(cond.as.str_val);
+            else if (cond.type == VAL_KARU) karu_free(&cond.as.karu_val);
+        }
+        break;
+    }
+
+    case NODE_WHEN: {
+        Value cond = eval_expr(interp, scope, node->as.when_stmt.when_cond);
+        if (cond.type == VAL_KARU && karu_is_multistate(cond.as.karu_val)) {
+            exec_multistate_when(interp, scope, node, cond);
+        } else {
+            if (val_truthy(cond)) {
+                Scope *inner = scope_create(scope);
+                exec_block_stmts(interp, inner, node->as.when_stmt.when_body);
+                scope_free(inner);
             }
-            scope_free(inner);
+            if (cond.type == VAL_STRING) free(cond.as.str_val);
+            else if (cond.type == VAL_KARU) karu_free(&cond.as.karu_val);
+        }
+        break;
+    }
+
+    case NODE_RUNTIME_CFG: {
+        if (node->as.runtime_cfg.has_max_branches) {
+            interp->rt->branches->max_branches = node->as.runtime_cfg.max_branches;
+            interp->rt->pruner.max_active = node->as.runtime_cfg.max_branches;
+        }
+        if (node->as.runtime_cfg.has_prune_threshold) {
+            interp->rt->branches->prune_threshold = node->as.runtime_cfg.prune_threshold;
+            interp->rt->pruner.weight_threshold = node->as.runtime_cfg.prune_threshold;
         }
         break;
     }
@@ -471,12 +740,19 @@ static void exec_stmt(Interpreter *interp, Scope *scope, ASTNode *node) {
         int limit = 10000; /* safety */
         while (!interp->had_error && !interp->returning && limit-- > 0) {
             Value cond = eval_expr(interp, inner, node->as.while_stmt.while_cond);
-            if (!val_truthy(cond)) break;
-            ASTNode *block = node->as.while_stmt.while_body;
-            for (size_t i = 0; i < block->as.block.block_count; i++) {
-                exec_stmt(interp, inner, block->as.block.block_stmts[i]);
-                if (interp->returning || interp->had_error) break;
+            bool ok = val_truthy(cond);
+            if (cond.type == VAL_STRING) free(cond.as.str_val);
+            else if (cond.type == VAL_KARU) {
+                if (karu_is_multistate(cond.as.karu_val)) {
+                    Value c = collapse_for_io(interp, cond);
+                    ok = val_truthy(c);
+                    if (c.type == VAL_STRING) free(c.as.str_val);
+                } else {
+                    karu_free(&cond.as.karu_val);
+                }
             }
+            if (!ok) break;
+            exec_block_stmts(interp, inner, node->as.while_stmt.while_body);
         }
         scope_free(inner);
         break;
@@ -504,10 +780,7 @@ static void exec_stmt(Interpreter *interp, Scope *scope, ASTNode *node) {
 
     case NODE_BLOCK: {
         Scope *inner = scope_create(scope);
-        for (size_t i = 0; i < node->as.block.block_count; i++) {
-            exec_stmt(interp, inner, node->as.block.block_stmts[i]);
-            if (interp->returning || interp->had_error) break;
-        }
+        exec_block_stmts(interp, inner, node);
         scope_free(inner);
         break;
     }

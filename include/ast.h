@@ -22,6 +22,8 @@ typedef enum {
     NODE_FN_DECL,        /* fn name(params) -> type { body } */
     NODE_RETURN,         /* return expr; */
     NODE_EXPR_STMT,      /* expression as statement (function call) */
+    NODE_WHEN,           /* when (cond) { ... } */
+    NODE_RUNTIME_CFG,    /* @runtime(max_branches: N, prune_threshold: F) */
 
     /* ── Expressions ────────────── */
     NODE_INT_LIT,        /* 42 */
@@ -113,6 +115,20 @@ struct ASTNode {
             ASTNode *if_then;
             ASTNode *if_else;   /* nullable */
         } if_stmt;
+
+        /* NODE_WHEN */
+        struct {
+            ASTNode *when_cond;
+            ASTNode *when_body;
+        } when_stmt;
+
+        /* NODE_RUNTIME_CFG */
+        struct {
+            size_t max_branches;     /* 0 = unchanged */
+            double prune_threshold;  /* < 0 = unchanged */
+            bool   has_max_branches;
+            bool   has_prune_threshold;
+        } runtime_cfg;
 
         /* NODE_WHILE */
         struct {

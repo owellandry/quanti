@@ -363,7 +363,13 @@ Esta regla garantiza que el mundo externo siempre recibe valores deterministas.
 
 ### Deployment
 
-QA es un **lenguaje standalone con su propio runtime**. No es un DSL embebido. Tiene su propio parser, intérprete y motor de ejecución. El target de implementación del primer prototipo es **Python** (velocidad de desarrollo), con planes de portar el runtime a **Rust** (rendimiento) en fases posteriores.
+QA es un **lenguaje standalone con su propio runtime**. No es un DSL embebido. Tiene parser, intérprete tree-walk, IR, VM bytecode y compilador AOT (`quanti build`) que genera C y linkea `libquanti` hacia un binario nativo. La implementación de referencia es **C11**.
+
+```bash
+quanti examples/demo.qa              # intérprete
+quanti vm examples/demo.qa           # IR + VM
+quanti build examples/demo.qa -o build/demo.exe --lto   # AOT nativo
+```
 
 ---
 
@@ -452,14 +458,18 @@ Este es el mismo problema del **path explosion** en ejecución simbólica — un
 
 | Componente | Estado |
 |---|---|
-| Hipótesis conceptual | ✅ Completa |
-| Posicionamiento en estado del arte | ✅ Completa |
-| Álgebra KaruByte | ✅ Especificada (esta versión) |
-| Semántica del colapso | ✅ Especificada (esta versión) |
-| Spec formal del lenguaje QA | 🔄 Parcial — paradigma y tipos definidos |
-| Intérprete mínimo | ⏳ Pendiente |
-| Benchmark vs. alternativas | ⏳ Pendiente |
-| Paper o publicación | ⏳ Pendiente |
+| Hipótesis conceptual | Completa |
+| Posicionamiento en estado del arte | Completa |
+| Álgebra KaruByte | Especificada e implementada en C |
+| Semántica del colapso | Especificada e implementada |
+| Spec formal del lenguaje QA | Parcial — paradigma, tipos, when/@runtime |
+| Intérprete tree-walk (C11) | Completo |
+| Branching en QA (`if`/`when` sobre `karu`) | Completo |
+| Quenti IR + bytecode VM | Completo |
+| AOT a binario nativo (`quanti build`) | Completo (IR→C→gcc + libquanti) |
+| Especialización de regiones clásicas + LTO | Completo |
+| Benchmark vs. alternativas externas | Pendiente |
+| Paper o publicación | Pendiente |
 
 ---
 

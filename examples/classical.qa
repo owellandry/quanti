@@ -1,0 +1,16 @@
+// Classical-only program — AOT should specialize without karu ops
+int a = 2;
+int b = 3;
+int c = a * b + 4;
+print(c);
+
+fn triple(int x) -> int {
+    return x * 3;
+}
+print(triple(7));
+
+int i = 3;
+while (i > 0) {
+    print(i);
+    i = i - 1;
+}

@@ -31,6 +31,12 @@ void ast_free(ASTNode *node) {
         ast_free(node->as.if_stmt.if_then);
         ast_free(node->as.if_stmt.if_else);
         break;
+    case NODE_WHEN:
+        ast_free(node->as.when_stmt.when_cond);
+        ast_free(node->as.when_stmt.when_body);
+        break;
+    case NODE_RUNTIME_CFG:
+        break;
     case NODE_WHILE:
         ast_free(node->as.while_stmt.while_cond);
         ast_free(node->as.while_stmt.while_body);
@@ -132,6 +138,16 @@ void ast_print(ASTNode *node, int indent) {
         ast_print(node->as.if_stmt.if_cond, indent+1);
         ast_print(node->as.if_stmt.if_then, indent+1);
         if (node->as.if_stmt.if_else) ast_print(node->as.if_stmt.if_else, indent+1);
+        break;
+    case NODE_WHEN:
+        printf("When\n");
+        ast_print(node->as.when_stmt.when_cond, indent+1);
+        ast_print(node->as.when_stmt.when_body, indent+1);
+        break;
+    case NODE_RUNTIME_CFG:
+        printf("RuntimeCfg(max_branches=%zu, prune=%g)\n",
+               node->as.runtime_cfg.max_branches,
+               node->as.runtime_cfg.prune_threshold);
         break;
     case NODE_WHILE:
         printf("While\n");

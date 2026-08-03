@@ -58,13 +58,23 @@ gcc -Wall -Wextra -std=c11 -I include -o build/quanti.exe \
 # Ejecutar un programa .qa
 ./build/quanti examples/demo.qa
 
-# Output esperado:
+# Output esperado (I/O colapsa karu con measure:map):
 #   Quanti
 #   42
-#   K (superposition)
+#   1          ← print(superposition) colapsa a map
 #   1
-#   comprar
 #   ...
+```
+
+### Compilar a binario nativo (AOT)
+
+```bash
+make libquanti
+./build/quanti.exe build examples/classical.qa -o build/classical.exe --lto
+./build/classical.exe
+
+./build/quanti.exe vm examples/demo.qa
+./build/quanti.exe ir examples/demo.qa
 ```
 
 ---
@@ -440,19 +450,20 @@ python main.py --model Qwen/Qwen2.5-0.5B --samples 8 --seeds 5 \
 
 ## Test Suite
 
-### Tests unitarios C (126 tests)
+### Tests unitarios C
 
 ```bash
-# Compilar y ejecutar todas las suites
+# Compilar y ejecutar todas las suites (runtime + lexer/parser/interpreter/IR)
 make test
-
-# O individualmente
-./build/test_karubyte.exe   # 52 tests — KaruByte, álgebra, distribuciones
-./build/test_memory.exe     # 24 tests — DAG de dependencias
-./build/test_collapse.exe   # 17 tests — Colapso MAP/SAMPLE/FIRST, propagación
-./build/test_branch.exe     # 19 tests — Fork, merge, poda, variables locales
-./build/test_runtime.exe    # 14 tests — Runtime integrado, escenarios end-to-end
 ```
+
+Suites: `test_karubyte`, `test_memory`, `test_collapse`, `test_branch`, `test_runtime`,
+`test_stochastic`, `test_lexer`, `test_parser`, `test_interpreter`, `test_ir`.
+
+### Experimento LLM (opcional)
+
+El experimento de cuantización de LLMs documentado históricamente vivía en `main.py`.
+No forma parte del runtime C actual; la hipótesis de late-collapse sigue válida a nivel conceptual.
 
 #### test_karubyte (52 tests)
 
@@ -532,56 +543,16 @@ El archivo `test_labels_e2e.qa` cubre:
 
 ```
 quanti/
-├── README.md                 ← este archivo
-├── quanti.qa.md              ← especificación formal del lenguaje QA
-├── Makefile                  ← build system (Windows/MinGW)
-├── main.py                   ← experimento de cuantización de LLMs
+├── README.md
+├── quanti.qa.md              ← especificación
+├── Makefile                  ← build (quanti, libquanti, tests, LTO)
 │
-├── include/                  ← headers públicos de la biblioteca C
-│   ├── ast.h                 ← definiciones del AST
-│   ├── branch.h              ← BranchManager API
-│   ├── collapse.h            ← Collapse Engine API
-│   ├── distribution.h        ← Distribution API
-│   ├── interpreter.h         ← Tree-walking interpreter
-│   ├── karubyte.h            ← KaruByte core
-│   ├── lexer.h               ← Lexer tokens
-│   ├── memory.h              ← KaruMemory (DAG)
-│   ├── parser.h              ← Parser API
-│   ├── pruner.h              ← Adaptive Pruner
-│   └── runtime.h             ← QuantiRuntime orchestrator
-│
-├── src/                      ← implementaciones C
-│   ├── ast.c                 ← AST allocation, free, debug print
-│   ├── branch.c              ← BranchManager implementation
-│   ├── collapse.c            ← Collapse engine
-│   ├── distribution.c        ← Distribution implementations
-│   ├── interpreter.c         ← Tree-walking interpreter
-│   ├── karubyte.c            ← KaruByte algebra
-│   ├── lexer.c               ← Tokenizer
-│   ├── main.c                ← CLI entry point
-│   ├── memory.c              ← DAG implementation
-│   ├── parser.c              ← Recursive descent parser
-│   ├── pruner.c              ← Adaptive pruning
-│   └── runtime.c             ← Runtime orchestrator
-│
-├── tests/                    ← test suites C
-│   ├── test_karubyte.c       ← 52 tests
-│   ├── test_memory.c         ← 24 tests
-│   ├── test_collapse.c       ← 17 tests
-│   ├── test_branch.c         ← 19 tests
-│   └── test_runtime.c        ← 14 tests
-│
-├── examples/
-│   ├── demo.qa               ← programa QA de demostración
-│   └── ...
-│
-├── build/                    ← binaries compilados
-│   ├── quanti.exe
-│   ├── test_karubyte.exe
-│   └── ...
-│
+├── include/                  ← headers (runtime + IR/VM/codegen)
+├── src/                      ← C11: runtime, intérprete, IR, VM, AOT
+├── tests/                    ← suites unitarias + benchmarks
+├── examples/                 ← demo.qa, branching.qa, classical.qa
+├── build/                    ← binaries + libquanti.a + *_gen.c
 └── docs/
-    └── main.md               ← notas internas
 ```
 
 ---

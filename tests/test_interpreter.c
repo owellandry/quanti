@@ -205,6 +205,36 @@ void test_error_handling(void) {
     PASS(); tests_run++; tests_passed++;
 }
 
+void test_branching_semantics(void) {
+    TEST("@runtime config accepted");
+    Interpreter *interp = fresh_interp();
+    assert(interp_exec(interp, "@runtime(max_branches: 16, prune_threshold: 0.05)\nint x = 1; print(x);"));
+    interp_destroy(interp);
+    PASS(); tests_run++; tests_passed++;
+
+    TEST("when with classical true");
+    interp = fresh_interp();
+    assert(interp_exec(interp, "int x = 1;\nwhen (x) { print(x); }"));
+    interp_destroy(interp);
+    PASS(); tests_run++; tests_passed++;
+
+    TEST("if on karu superposition forks");
+    interp = fresh_interp();
+    assert(interp_exec(interp,
+        "karu h = superposition(0, 1);\n"
+        "int score = 0;\n"
+        "if (h) { score = 10; } else { score = 3; }\n"
+        "print(score);\n"));
+    interp_destroy(interp);
+    PASS(); tests_run++; tests_passed++;
+
+    TEST("print collapses multistate karu");
+    interp = fresh_interp();
+    assert(interp_exec(interp, "karu x = superposition(0, 1); print(x);"));
+    interp_destroy(interp);
+    PASS(); tests_run++; tests_passed++;
+}
+
 int main(void) {
     printf("\n=== Quanti Test Suite — Interpreter (E2E) ===\n\n");
 
@@ -237,6 +267,9 @@ int main(void) {
 
     printf("\n[SUITE] Error Handling\n");
     test_error_handling();
+
+    printf("\n[SUITE] Branching Semantics\n");
+    test_branching_semantics();
 
     printf("\n=== Results: %d/%d passed ===\n\n", tests_passed, tests_run);
     return (tests_passed == tests_run) ? 0 : 1;
