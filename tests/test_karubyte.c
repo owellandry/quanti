@@ -4,6 +4,7 @@
 #include <string.h>
 #include "../include/karubyte.h"
 #include "../include/distribution.h"
+#include "../include/stochastic.h"
 
 #define TEST(name) printf("  [TEST] %-45s", name)
 #define PASS()     printf("OK\n")
@@ -316,6 +317,128 @@ void test_commutativity(void) {
     }
 }
 
+/* ── Tests: SC Backend ───────────────────────────────── */
+
+void test_sc_backend(void) {
+    TEST("karu_prob_sc → backend == BACKEND_SC");
+    StochasticStream *s = sc_create(0.7, 1024, SC_VAN_DER_CORPUT);
+    KaruByte k = karu_prob_sc(s);
+    assert(k.state == KARU_PROB);
+    assert(k.backend == BACKEND_SC);
+    assert(k.stream != NULL);
+    karu_free(&k);
+    PASS(); tests_run++; tests_passed++;
+
+    TEST("karu_set_backend FLOAT→SC creates stream");
+    Distribution *d = dist_discrete((double[]){0.6, 0.4}, NULL, 2);
+    KaruByte k2 = karu_prob(d);
+    assert(k2.backend == BACKEND_FLOAT);
+    assert(k2.stream == NULL);
+    karu_set_backend(&k2, BACKEND_SC, 1024);
+    assert(k2.backend == BACKEND_SC);
+    assert(k2.stream != NULL);
+    karu_free(&k2);
+    PASS(); tests_run++; tests_passed++;
+
+    TEST("karu_set_backend SC→FLOAT creates dist");
+    StochasticStream *s2 = sc_create(0.75, 1024, SC_VAN_DER_CORPUT);
+    KaruByte k3 = karu_prob_sc(s2);
+    assert(k3.backend == BACKEND_SC);
+    karu_set_backend(&k3, BACKEND_FLOAT, 1024);
+    assert(k3.backend == BACKEND_FLOAT);
+    assert(k3.stream == NULL);
+    assert(k3.dist != NULL);
+    karu_free(&k3);
+    PASS(); tests_run++; tests_passed++;
+
+    TEST("karu_clone preserves backend SC");
+    StochasticStream *s3 = sc_create(0.65, 1024, SC_VAN_DER_CORPUT);
+    KaruByte k4 = karu_prob_sc(s3);
+    KaruByte k5 = karu_clone(k4);
+    assert(k5.backend == BACKEND_SC);
+    assert(k5.stream != NULL);
+    karu_free(&k4);
+    karu_free(&k5);
+    PASS(); tests_run++; tests_passed++;
+
+    TEST("karu_get_backend returns correct value");
+    KaruByte kf = karu_false();
+    assert(karu_get_backend(kf) == BACKEND_FLOAT);
+    StochasticStream *s4 = sc_create(0.5, 1024, SC_VAN_DER_CORPUT);
+    KaruByte ksc = karu_prob_sc(s4);
+    assert(karu_get_backend(ksc) == BACKEND_SC);
+    karu_free(&ksc);
+    PASS(); tests_run++; tests_passed++;
+}
+
+void test_sc_algebra(void) {
+    TEST("SC: P(0.7) AND P(0.8) → ~0.56");
+    StochasticStream *sa = sc_create(0.7, 4096, SC_VAN_DER_CORPUT);
+    StochasticStream *sb = sc_create(0.8, 4096, SC_RANDOM);
+    KaruByte ka = karu_prob_sc(sa);
+    KaruByte kb = karu_prob_sc(sb);
+    KaruByte kr = karu_and(ka, kb);
+    assert(kr.state == KARU_PROB);
+    assert(kr.backend == BACKEND_SC);
+    double p_est = sc_estimate(kr.stream);
+    assert(fabs(p_est - 0.56) < 0.06);
+    karu_free(&ka); karu_free(&kb); karu_free(&kr);
+    PASS(); tests_run++; tests_passed++;
+
+    TEST("SC: P(0.3) OR P(0.4) → ~0.58");
+    sa = sc_create(0.3, 4096, SC_VAN_DER_CORPUT);
+    sb = sc_create(0.4, 4096, SC_RANDOM);
+    ka = karu_prob_sc(sa);
+    kb = karu_prob_sc(sb);
+    kr = karu_or(ka, kb);
+    assert(kr.backend == BACKEND_SC);
+    double expected = 0.3 + 0.4 - 0.3 * 0.4;
+    p_est = sc_estimate(kr.stream);
+    assert(fabs(p_est - expected) < 0.06);
+    karu_free(&ka); karu_free(&kb); karu_free(&kr);
+    PASS(); tests_run++; tests_passed++;
+
+    TEST("SC: NOT P(0.7) → ~0.3");
+    sa = sc_create(0.7, 4096, SC_VAN_DER_CORPUT);
+    ka = karu_prob_sc(sa);
+    kr = karu_not(ka);
+    assert(kr.backend == BACKEND_SC);
+    p_est = sc_estimate(kr.stream);
+    assert(fabs(p_est - 0.3) < 0.06);
+    karu_free(&ka); karu_free(&kr);
+    PASS(); tests_run++; tests_passed++;
+
+    TEST("SC mixed: FLOAT(0.6) AND SC(0.5) → ~0.3");
+    Distribution *d = dist_discrete((double[]){0.6, 0.4}, NULL, 2);
+    ka = karu_prob(d);
+    sb = sc_create(0.5, 4096, SC_RANDOM);
+    kb = karu_prob_sc(sb);
+    kr = karu_and(ka, kb);
+    assert(kr.backend == BACKEND_SC);
+    p_est = sc_estimate(kr.stream);
+    assert(fabs(p_est - 0.3) < 0.08);
+    karu_free(&ka); karu_free(&kb); karu_free(&kr);
+    PASS(); tests_run++; tests_passed++;
+
+    TEST("SC: 0 AND P → 0 (absorption preserved)");
+    ka = karu_false();
+    sa = sc_create(0.7, 1024, SC_VAN_DER_CORPUT);
+    kb = karu_prob_sc(sa);
+    kr = karu_and(ka, kb);
+    assert(kr.state == KARU_FALSE);
+    karu_free(&kb);
+    PASS(); tests_run++; tests_passed++;
+
+    TEST("SC: 1 OR P → 1 (absorption preserved)");
+    ka = karu_true();
+    sa = sc_create(0.3, 1024, SC_VAN_DER_CORPUT);
+    kb = karu_prob_sc(sa);
+    kr = karu_or(ka, kb);
+    assert(kr.state == KARU_TRUE);
+    karu_free(&kb);
+    PASS(); tests_run++; tests_passed++;
+}
+
 /* ── Main ───────────────────────────────────────────── */
 
 int main(void) {
@@ -338,6 +461,12 @@ int main(void) {
 
     printf("\n[SUITE] Commutativity\n");
     test_commutativity();
+
+    printf("\n[SUITE] SC Backend\n");
+    test_sc_backend();
+
+    printf("\n[SUITE] SC Algebra\n");
+    test_sc_algebra();
 
     printf("\n=== Results: %d/%d passed ===\n\n", tests_passed, tests_run);
 

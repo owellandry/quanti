@@ -218,6 +218,65 @@ void test_agentic_scenario(void) {
     PASS(); tests_run++; tests_passed++;
 }
 
+/* ── Tests: SC Runtime ─────────────────────────────── */
+
+void test_sc_runtime(void) {
+    QuantiConfig cfg = quanti_default_config();
+    cfg.default_backend = BACKEND_SC;
+    cfg.sc_stream_length = 4096;
+    QuantiRuntime *rt = quanti_init(cfg);
+
+    TEST("quanti_prob_sc creates SC KaruByte");
+    KaruByte k = quanti_prob_sc(rt, 0.7);
+    assert(k.state == KARU_PROB);
+    assert(k.backend == BACKEND_SC);
+    assert(k.stream != NULL);
+    assert(fabs(sc_estimate(k.stream) - 0.7) < 0.06);
+    PASS(); tests_run++; tests_passed++;
+
+    TEST("quanti_prob with SC default → auto-converts");
+    Distribution *d = dist_discrete((double[]){0.6, 0.4}, NULL, 2);
+    KaruByte k2 = quanti_prob(rt, d);
+    assert(k2.backend == BACKEND_SC);
+    PASS(); tests_run++; tests_passed++;
+
+    TEST("quanti_set_backend FLOAT→SC");
+    QuantiConfig cfg2 = quanti_default_config();
+    QuantiRuntime *rt2 = quanti_init(cfg2);
+    Distribution *d2 = dist_discrete((double[]){0.5, 0.5}, NULL, 2);
+    KaruByte k3 = quanti_prob(rt2, d2);
+    assert(k3.backend == BACKEND_FLOAT);
+    quanti_set_backend(rt2, &k3, BACKEND_SC);
+    assert(k3.backend == BACKEND_SC);
+    assert(k3.stream != NULL);
+    quanti_destroy(rt2);
+    PASS(); tests_run++; tests_passed++;
+
+    TEST("SC AND via runtime: 0.7 AND 0.8 → ~0.56");
+    KaruByte a = quanti_prob_sc(rt, 0.7);
+    KaruByte b = quanti_prob_sc(rt, 0.8);
+    KaruByte r = quanti_and(rt, a, b);
+    assert(r.backend == BACKEND_SC);
+    assert(fabs(sc_estimate(r.stream) - 0.56) < 0.08);
+    PASS(); tests_run++; tests_passed++;
+
+    TEST("SC OR via runtime: 0.3 OR 0.4 → ~0.58");
+    a = quanti_prob_sc(rt, 0.3);
+    b = quanti_prob_sc(rt, 0.4);
+    r = quanti_or(rt, a, b);
+    double expected = 0.3 + 0.4 - 0.3 * 0.4;
+    assert(fabs(sc_estimate(r.stream) - expected) < 0.10);
+    PASS(); tests_run++; tests_passed++;
+
+    TEST("SC NOT via runtime: NOT(0.7) → ~0.3");
+    a = quanti_prob_sc(rt, 0.7);
+    r = quanti_not(rt, a);
+    assert(fabs(sc_estimate(r.stream) - 0.3) < 0.08);
+    PASS(); tests_run++; tests_passed++;
+
+    quanti_destroy(rt);
+}
+
 /* ── Main ───────────────────────────────────────────── */
 
 int main(void) {
@@ -243,6 +302,9 @@ int main(void) {
 
     printf("\n[SUITE] Agentic AI Scenario\n");
     test_agentic_scenario();
+
+    printf("\n[SUITE] SC Runtime\n");
+    test_sc_runtime();
 
     printf("\n=== Results: %d/%d passed ===\n\n", tests_passed, tests_run);
 

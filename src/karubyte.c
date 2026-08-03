@@ -1,5 +1,6 @@
 #include "karubyte.h"
 #include "distribution.h"
+#include "stochastic.h"
 #include <stdlib.h>
 #include <stdio.h>
 
@@ -17,6 +18,8 @@ KaruByte karu_false(void) {
     return (KaruByte){
         .state      = KARU_FALSE,
         .dist       = NULL,
+        .stream     = NULL,
+        .backend    = BACKEND_FLOAT,
         .id         = karu_next_id(),
         .persistent = false
     };
@@ -26,6 +29,8 @@ KaruByte karu_true(void) {
     return (KaruByte){
         .state      = KARU_TRUE,
         .dist       = NULL,
+        .stream     = NULL,
+        .backend    = BACKEND_FLOAT,
         .id         = karu_next_id(),
         .persistent = false
     };
@@ -35,6 +40,8 @@ KaruByte karu_super(void) {
     return (KaruByte){
         .state      = KARU_SUPER,
         .dist       = NULL,
+        .stream     = NULL,
+        .backend    = BACKEND_FLOAT,
         .id         = karu_next_id(),
         .persistent = false
     };
@@ -44,6 +51,8 @@ KaruByte karu_undef(void) {
     return (KaruByte){
         .state      = KARU_UNDEF,
         .dist       = NULL,
+        .stream     = NULL,
+        .backend    = BACKEND_FLOAT,
         .id         = karu_next_id(),
         .persistent = false
     };
@@ -52,7 +61,21 @@ KaruByte karu_undef(void) {
 KaruByte karu_prob(Distribution *dist) {
     return (KaruByte){
         .state      = KARU_PROB,
-        .dist       = dist,   /* toma ownership */
+        .dist       = dist,
+        .stream     = NULL,
+        .backend    = BACKEND_FLOAT,
+        .id         = karu_next_id(),
+        .persistent = false
+    };
+}
+
+KaruByte karu_prob_sc(StochasticStream *stream) {
+    Distribution *d = sc_to_distribution(stream);
+    return (KaruByte){
+        .state      = KARU_PROB,
+        .dist       = d,
+        .stream     = stream,
+        .backend    = BACKEND_SC,
         .id         = karu_next_id(),
         .persistent = false
     };
@@ -97,6 +120,14 @@ KaruByte karu_and(KaruByte a, KaruByte b) {
 
     /* P AND P = P·P' → intersección de distribuciones */
     if (a.state == KARU_PROB && b.state == KARU_PROB) {
+        if (a.backend == BACKEND_SC || b.backend == BACKEND_SC) {
+            StochasticStream *sa = a.stream ? a.stream : sc_from_distribution(a.dist, SC_DEFAULT_LENGTH);
+            StochasticStream *sb = b.stream ? b.stream : sc_from_distribution(b.dist, SC_DEFAULT_LENGTH);
+            StochasticStream *result = sc_and(sa, sb);
+            if (!a.stream) sc_free(sa);
+            if (!b.stream) sc_free(sb);
+            return karu_prob_sc(result);
+        }
         Distribution *combined = dist_intersect(a.dist, b.dist);
         return karu_prob(combined);
     }
@@ -154,6 +185,14 @@ KaruByte karu_or(KaruByte a, KaruByte b) {
 
     /* P OR P = P+P' → unión de distribuciones */
     if (a.state == KARU_PROB && b.state == KARU_PROB) {
+        if (a.backend == BACKEND_SC || b.backend == BACKEND_SC) {
+            StochasticStream *sa = a.stream ? a.stream : sc_from_distribution(a.dist, SC_DEFAULT_LENGTH);
+            StochasticStream *sb = b.stream ? b.stream : sc_from_distribution(b.dist, SC_DEFAULT_LENGTH);
+            StochasticStream *result = sc_or(sa, sb);
+            if (!a.stream) sc_free(sa);
+            if (!b.stream) sc_free(sb);
+            return karu_prob_sc(result);
+        }
         Distribution *combined = dist_union(a.dist, b.dist);
         return karu_prob(combined);
     }
@@ -176,7 +215,14 @@ KaruByte karu_not(KaruByte a) {
     case KARU_TRUE:  return karu_false();
     case KARU_SUPER: return karu_super();
     case KARU_UNDEF: return karu_undef();
-    case KARU_PROB:  return karu_prob(dist_complement(a.dist));
+    case KARU_PROB:
+        if (a.backend == BACKEND_SC) {
+            StochasticStream *sa = a.stream ? a.stream : sc_from_distribution(a.dist, SC_DEFAULT_LENGTH);
+            StochasticStream *result = sc_not(sa);
+            if (!a.stream) sc_free(sa);
+            return karu_prob_sc(result);
+        }
+        return karu_prob(dist_complement(a.dist));
     }
     return karu_undef();
 }
@@ -210,12 +256,40 @@ const char *karu_state_name(KaruState s) {
     return "unknown";
 }
 
+/* ── Backend switching ──────────────────────────────── */
+
+void karu_set_backend(KaruByte *k, KaruBackend backend, size_t sc_length) {
+    if (!k || k->backend == backend) return;
+
+    if (backend == BACKEND_SC && k->state == KARU_PROB) {
+        if (!k->stream && k->dist) {
+            k->stream = sc_from_distribution(k->dist, sc_length);
+        }
+        k->backend = BACKEND_SC;
+    } else if (backend == BACKEND_FLOAT && k->state == KARU_PROB) {
+        if (!k->dist && k->stream) {
+            k->dist = sc_to_distribution(k->stream);
+        }
+        if (k->stream) {
+            sc_free(k->stream);
+            k->stream = NULL;
+        }
+        k->backend = BACKEND_FLOAT;
+    }
+}
+
+KaruBackend karu_get_backend(KaruByte k) {
+    return k.backend;
+}
+
 /* ── Utilidades ─────────────────────────────────────── */
 
 KaruByte karu_clone(KaruByte k) {
     KaruByte copy;
     copy.state      = k.state;
     copy.dist       = k.dist ? dist_clone(k.dist) : NULL;
+    copy.stream     = k.stream ? sc_clone(k.stream) : NULL;
+    copy.backend    = k.backend;
     copy.id         = karu_next_id();
     copy.persistent = k.persistent;
     return copy;
@@ -226,5 +300,9 @@ void karu_free(KaruByte *k) {
     if (k->dist) {
         dist_free(k->dist);
         k->dist = NULL;
+    }
+    if (k->stream) {
+        sc_free(k->stream);
+        k->stream = NULL;
     }
 }

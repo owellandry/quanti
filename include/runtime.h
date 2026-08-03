@@ -3,6 +3,7 @@
 
 #include "karubyte.h"
 #include "distribution.h"
+#include "stochastic.h"
 #include "memory.h"
 #include "collapse.h"
 #include "branch.h"
@@ -20,6 +21,9 @@ typedef struct {
     BranchManager *branches;  /* manager de ramas */
     PrunerConfig   pruner;    /* configuración del pruner */
     CollapseMode   default_collapse;  /* modo de colapso por defecto */
+    KaruBackend    default_backend;   /* backend por defecto para nuevos P */
+    size_t         sc_stream_length;  /* longitud de stream SC */
+    SCSequenceType sc_sequence_type;  /* tipo de secuencia SC */
 } QuantiRuntime;
 
 /* ── Configuración ──────────────────────────────────── */
@@ -29,6 +33,9 @@ typedef struct {
     double       prune_threshold;
     size_t       initial_memory;
     CollapseMode default_collapse;
+    KaruBackend  default_backend;
+    size_t       sc_stream_length;
+    SCSequenceType sc_sequence_type;
 } QuantiConfig;
 
 QuantiConfig quanti_default_config(void);
@@ -46,6 +53,8 @@ KaruByte quanti_true(QuantiRuntime *rt);
 KaruByte quanti_superposition(QuantiRuntime *rt);
 KaruByte quanti_undef(QuantiRuntime *rt);
 KaruByte quanti_prob(QuantiRuntime *rt, Distribution *dist);
+KaruByte quanti_prob_sc(QuantiRuntime *rt, double p);
+KaruByte quanti_prob_sc_stream(QuantiRuntime *rt, StochasticStream *stream);
 
 /* Operaciones (resultado se registra en DAG con dependencias) */
 KaruByte quanti_and(QuantiRuntime *rt, KaruByte a, KaruByte b);
@@ -55,6 +64,9 @@ KaruByte quanti_not(QuantiRuntime *rt, KaruByte a);
 /* Colapso */
 KaruByte quanti_measure(QuantiRuntime *rt, KaruByte k, CollapseMode mode);
 KaruByte quanti_measure_default(QuantiRuntime *rt, KaruByte k);
+
+/* Backend switching */
+void quanti_set_backend(QuantiRuntime *rt, KaruByte *k, KaruBackend backend);
 
 /* Branching */
 size_t quanti_fork(QuantiRuntime *rt, KaruByte source);

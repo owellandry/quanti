@@ -29,6 +29,14 @@ typedef enum {
 /* ── Forward declarations ───────────────────────────── */
 
 typedef struct Distribution Distribution;  /* defined in distribution.h */
+typedef struct StochasticStream StochasticStream;  /* defined in stochastic.h */
+
+/* ── Backend ────────────────────────────────────────── */
+
+typedef enum {
+    BACKEND_FLOAT = 0,  /* Backend actual (doubles, precisión completa) */
+    BACKEND_SC    = 1   /* Stochastic Computing (streams de bits) */
+} KaruBackend;
 
 /* ── KaruByte ───────────────────────────────────────── */
 
@@ -38,6 +46,13 @@ typedef struct {
     /* Solo relevante cuando state == KARU_PROB.
      * Puntero a distribución asociada (owned, nullable). */
     Distribution *dist;
+
+    /* Solo relevante cuando backend == BACKEND_SC.
+     * Puntero a stream estocástico (owned, nullable). */
+    StochasticStream *stream;
+
+    /* Backend activo para operaciones probabilísticas */
+    KaruBackend backend;
 
     /* ID único para tracking en el DAG de dependencias */
     uint32_t id;
@@ -53,6 +68,12 @@ KaruByte karu_true(void);
 KaruByte karu_super(void);
 KaruByte karu_undef(void);
 KaruByte karu_prob(Distribution *dist);   /* toma ownership del dist */
+KaruByte karu_prob_sc(StochasticStream *stream);  /* crea KaruByte con backend SC */
+
+/* ── Backend switching ──────────────────────────────── */
+
+void karu_set_backend(KaruByte *k, KaruBackend backend, size_t sc_length);
+KaruBackend karu_get_backend(KaruByte k);
 
 /* ── Álgebra ────────────────────────────────────────── */
 

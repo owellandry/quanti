@@ -8,7 +8,10 @@ QuantiConfig quanti_default_config(void) {
         .max_branches     = 64,
         .prune_threshold  = 0.01,
         .initial_memory   = 256,
-        .default_collapse = COLLAPSE_MAP
+        .default_collapse = COLLAPSE_MAP,
+        .default_backend  = BACKEND_FLOAT,
+        .sc_stream_length = SC_DEFAULT_LENGTH,
+        .sc_sequence_type = SC_RANDOM
     };
 }
 
@@ -29,6 +32,9 @@ QuantiRuntime *quanti_init(QuantiConfig config) {
     rt->pruner.max_active = config.max_branches;
 
     rt->default_collapse = config.default_collapse;
+    rt->default_backend = config.default_backend;
+    rt->sc_stream_length = config.sc_stream_length;
+    rt->sc_sequence_type = config.sc_sequence_type;
 
     return rt;
 }
@@ -68,6 +74,22 @@ KaruByte quanti_undef(QuantiRuntime *rt) {
 
 KaruByte quanti_prob(QuantiRuntime *rt, Distribution *dist) {
     KaruByte k = karu_prob(dist);
+    if (rt->default_backend == BACKEND_SC) {
+        karu_set_backend(&k, BACKEND_SC, rt->sc_stream_length);
+    }
+    kmem_register(rt->memory, k);
+    return k;
+}
+
+KaruByte quanti_prob_sc(QuantiRuntime *rt, double p) {
+    StochasticStream *stream = sc_create(p, rt->sc_stream_length, rt->sc_sequence_type);
+    KaruByte k = karu_prob_sc(stream);
+    kmem_register(rt->memory, k);
+    return k;
+}
+
+KaruByte quanti_prob_sc_stream(QuantiRuntime *rt, StochasticStream *stream) {
+    KaruByte k = karu_prob_sc(stream);
     kmem_register(rt->memory, k);
     return k;
 }
@@ -108,6 +130,13 @@ KaruByte quanti_measure(QuantiRuntime *rt, KaruByte k, CollapseMode mode) {
 
 KaruByte quanti_measure_default(QuantiRuntime *rt, KaruByte k) {
     return quanti_measure(rt, k, rt->default_collapse);
+}
+
+/* ── Backend switching ──────────────────────────────── */
+
+void quanti_set_backend(QuantiRuntime *rt, KaruByte *k, KaruBackend backend) {
+    if (!rt || !k) return;
+    karu_set_backend(k, backend, rt->sc_stream_length);
 }
 
 /* ── Branching ──────────────────────────────────────── */
